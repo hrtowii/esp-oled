@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 
 // code stolen from ssd1306 hal written for STM32, just ripped out handle -> changed to i2c driver code
+static const char *TAG = "DISPLAY: ";
 
 #define I2C_MASTER_SCL_IO           4
 #define I2C_MASTER_SDA_IO           5
@@ -315,3 +316,34 @@ void setBrightness(uint8_t brightness)
 
   setContrast(contrast, precharge, comdetect);
 }
+
+void oled_init(void) {
+    if (ssd1306_Init() != 0) {
+        ESP_LOGE(TAG, "OLED Init failed");
+    } else {
+        ESP_LOGI(TAG, "OLED Init successful");
+    }
+}
+
+void oled_update_name(char *string) {
+    char *string_line_1 = string;
+    char *string_line_2 = "";
+    
+    if (strlen(string) > 11) {
+        string_line_2 = string + 11;
+    }
+
+    ssd1306_Fill(Black);
+    
+    ssd1306_SetCursor(0, 0);
+    ssd1306_WriteString("meow im ", Font_7x10, White);
+    
+    ssd1306_SetCursor(0, 12);
+    ssd1306_WriteString(string_line_1, Font_11x18, White);
+    
+    ssd1306_SetCursor(0, 30);
+    ssd1306_WriteString(string_line_2, Font_11x18, White);
+    
+    ssd1306_UpdateScreen();
+}
+

@@ -6,11 +6,16 @@
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
 #include "esp_http_client.h"
+#include "freertos/idf_additions.h"
+#include "esp_err.h"
+
 #include "wifi.h"
 static const char *TAG = "wifi station";
 static int s_retry_num = 0;
-#define EXAMPLE_ESP_WIFI_SSID      "LF14000NN."
-#define EXAMPLE_ESP_WIFI_PASS      "DeNyO3656$!"
+// #define EXAMPLE_ESP_WIFI_SSID      "LF14000NN."
+// #define EXAMPLE_ESP_WIFI_PASS      "DeNyO3656$!"
+#define EXAMPLE_ESP_WIFI_SSID      "mrow"
+#define EXAMPLE_ESP_WIFI_PASS      "00000000"
 #define EXAMPLE_ESP_MAXIMUM_RETRY  3
 
 static EventGroupHandle_t s_wifi_event_group;
@@ -19,6 +24,7 @@ static EventGroupHandle_t s_wifi_event_group;
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+bool ntp_synced = false;
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
@@ -29,6 +35,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGI(TAG, "retry to connect to the AP");
+            vTaskDelay(100/portTICK_PERIOD_MS);
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
@@ -38,11 +45,19 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+                if (!ntp_synced) {
+            esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("0.sg.pool.ntp.org");
+            esp_netif_sntp_init(&config);
+            while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_ERR_TIMEOUT) {
+                ESP_LOGI(TAG, "Waiting for SNTP to sync...");
+            }
+            ntp_synced = true;
+        }
     }
 }
 
 
-void wifi_init_sta(void)
+esp_err_t wifi_init_sta(void)
 {
     s_wifi_event_group = xEventGroupCreate();
 
@@ -89,7 +104,6 @@ void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_start() );
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
-
     /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
      * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
@@ -103,10 +117,14 @@ void wifi_init_sta(void)
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
                  EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+                 return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
                  EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+                 return ESP_ERR_WIFI_NOT_CONNECT;
     } else {
         ESP_LOGE(TAG, "UNEXPECTED EVENT");
+        return ESP_ERR_WIFI_NOT_CONNECT;
+
     }
 }

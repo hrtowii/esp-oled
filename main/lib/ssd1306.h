@@ -83,5 +83,6 @@ void ssd1306_I2C_Init(void);
 uint8_t ssd1306_Init(void);
 void ssd1306_UpdateScreen(void);
 void setBrightness(uint8_t brightness);
-
+void oled_init(void);
+void oled_update_name(char *string);
 #endif  // _SSD1306_H

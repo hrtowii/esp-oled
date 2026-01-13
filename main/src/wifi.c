@@ -45,14 +45,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-                if (!ntp_synced) {
-            esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("0.sg.pool.ntp.org");
-            esp_netif_sntp_init(&config);
-            while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_ERR_TIMEOUT) {
-                ESP_LOGI(TAG, "Waiting for SNTP to sync...");
-            }
-            ntp_synced = true;
-        }
     }
 }
 

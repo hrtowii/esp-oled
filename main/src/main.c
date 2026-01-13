@@ -4,10 +4,11 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 #include "ssd1306.h"
 #include "fonts.h" 
 #include "wifi.h"
-#include "esp_sntp.h"
 #include "fetcher.h"
 // https://github.com/NUSGreyhats/greycat2k24-badge-public/blob/main/firmware/greycat_firmware/Src/hw/oled.c#L4
 static const char *TAG = "MAIN";
@@ -98,8 +99,26 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     oled_init();
 
-    ESP_LOGI(TAG, "initing wifi+ntp");
+    ESP_LOGI(TAG, "initing wifi");
     ESP_ERROR_CHECK(wifi_init_sta());
+
+    ESP_LOGI(TAG, "syncing NTP");
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("0.sg.pool.ntp.org");
+    esp_netif_sntp_init(&config);
+    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_ERR_TIMEOUT) {
+        ESP_LOGI(TAG, "Waiting for SNTP to sync...");
+    }
+    ESP_LOGI(TAG, "time synced");
+    time_t rawtime;
+    struct tm * timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    char output[100];
+    sprintf(output, "[%d/%d/%d %d:%d:%d]", timeinfo->tm_mday,
+            timeinfo->tm_mon + 1, timeinfo->tm_year + 1900,
+            timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+    ESP_LOGI(TAG, "%s", output);
+
     start_fetcher_task();
     int task_id0 = 0;
     xTaskCreate(display_task, "display_task", 4096, (void*)task_id0, 2, NULL);

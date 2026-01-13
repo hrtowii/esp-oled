@@ -42,7 +42,7 @@ void ws_send_json(cJSON *json) {
 void heartbeat_task(void *pvParameters) {
     int interval_ms = (int)pvParameters;
     TickType_t xDelay = pdMS_TO_TICKS(interval_ms);
-    
+
     while (1) {
         ESP_LOGD(TAG, "Ping...");
         cJSON *root = cJSON_CreateObject();
@@ -57,7 +57,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
     switch (event_id) {
         case WEBSOCKET_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "WS Connected");
+            ESP_LOGI(TAG, "connected!");
             break;
 
         case WEBSOCKET_EVENT_DATA:
@@ -67,11 +67,16 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                 free(json_str);
 
                 if (!root) return;
-
-                int op = cJSON_GetObjectItem(root, "op")->valueint;
+                
+                cJSON *op_item = cJSON_GetObjectItem(root, "op");
+                if (!cJSON_IsNumber(op_item)) return;
+                int op = (int)cJSON_GetNumberValue(op_item);
 
                 if (op == 1) {
-                    int interval = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "d"), "heartbeat_interval")->valueint;
+                    cJSON *data_obj = cJSON_GetObjectItem(root, "d");
+                    cJSON *interval_item = cJSON_GetObjectItem(data_obj, "heartbeat_interval");
+                    if (!cJSON_IsNumber(interval_item)) return;
+                    int interval = (int)cJSON_GetNumberValue(interval_item);
                     
                     if (heartbeat_task_handle == NULL) {
                         xTaskCreate(heartbeat_task, "ws_hb", 2048, (void *)interval, 5, &heartbeat_task_handle);
@@ -94,14 +99,25 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
                     if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(500))) {
                         if (cJSON_IsObject(spotify)) {
-                            // Extract Strings
-                            char *art = cJSON_GetObjectItem(spotify, "artist")->valuestring;
-                            char *sng = cJSON_GetObjectItem(spotify, "song")->valuestring;
+                            cJSON *artist_item = cJSON_GetObjectItem(spotify, "artist");
+                            cJSON *song_item = cJSON_GetObjectItem(spotify, "song");
+                            if (!cJSON_IsString(artist_item) || !cJSON_IsString(song_item)) {
+                                xSemaphoreGive(xStateMutex);
+                                return;
+                            }
+                            char *art = cJSON_GetStringValue(artist_item);
+                            char *sng = cJSON_GetStringValue(song_item);
                             
                             cJSON *ts = cJSON_GetObjectItem(spotify, "timestamps");
                             if (ts) {
-                                g_app_state.start_time_ms = (int64_t)cJSON_GetObjectItem(ts, "start")->valuedouble;
-                                g_app_state.end_time_ms   = (int64_t)cJSON_GetObjectItem(ts, "end")->valuedouble;
+                                cJSON *start_item = cJSON_GetObjectItem(ts, "start");
+                                cJSON *end_item = cJSON_GetObjectItem(ts, "end");
+                                if (cJSON_IsNumber(start_item) && cJSON_IsNumber(end_item)) {
+                                    g_app_state.start_time_ms = (int64_t)cJSON_GetNumberValue(start_item);
+                                    g_app_state.end_time_ms   = (int64_t)cJSON_GetNumberValue(end_item);
+                                } else {
+                                    g_app_state.start_time_ms = 0;
+                                }
                             } else {
                                 g_app_state.start_time_ms = 0;
                             }
@@ -130,6 +146,21 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
     }
 }
 
+const char cert[] = 
+"-----BEGIN CERTIFICATE-----\n"
+"MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD\n"
+"VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG\n"
+"A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw\n"
+"WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz\n"
+"IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi\n"
+"AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi\n"
+"QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR\n"
+"HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW\n"
+"BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D\n"
+"9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8\n"
+"p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD\n"
+"-----END CERTIFICATE-----";
+
 
 void websocket_app_start() {
     if (xStateMutex == NULL) {
@@ -139,7 +170,8 @@ void websocket_app_start() {
         .uri = LANYARD_URI,
         .buffer_size = 4096,
         .disable_auto_reconnect = false,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .cert_pem = cert,
+        // .crt_bundle_attach = esp_crt_bundle_attach,
     };
     client = esp_websocket_client_init(&config);
     esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, websocket_event_handler, (void *)client);

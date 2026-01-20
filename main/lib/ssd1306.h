@@ -79,6 +79,21 @@ char ssd1306_WriteString(const char* str, FontDef Font, SSD1306_COLOR color);
 void ssd1306_SetCursor(uint8_t x, uint8_t y);
 void ssd1306_InvertColors(void);
 
+typedef struct {
+    uint32_t scroll_offset;
+    uint32_t delay_counter;
+    char last_text[128];
+} MarqueeState_t;
+
+#define MARQUEE_SPEED 2
+#define MARQUEE_START_DELAY 60
+#define MARQUEE_LOOP_GAP 20
+
+void ssd1306_WriteStringMarquee(const char* str, FontDef Font, SSD1306_COLOR color,
+                                 uint8_t max_width, MarqueeState_t *state,
+                                 uint8_t scroll_speed, uint16_t start_delay, uint8_t loop_gap);
+
+
 void ssd1306_I2C_Init(void);
 uint8_t ssd1306_Init(void);
 void ssd1306_UpdateScreen(void);

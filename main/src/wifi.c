@@ -12,10 +12,10 @@
 #include "wifi.h"
 static const char *TAG = "wifi station";
 static int s_retry_num = 0;
-// #define EXAMPLE_ESP_WIFI_SSID      "LF14000NN."
-// #define EXAMPLE_ESP_WIFI_PASS      "DeNyO3656$!"
-#define EXAMPLE_ESP_WIFI_SSID      "mrow"
-#define EXAMPLE_ESP_WIFI_PASS      "00000000"
+#define EXAMPLE_ESP_WIFI_SSID      "LF14000NN."
+#define EXAMPLE_ESP_WIFI_PASS      "DeNyO3656$!"
+// #define EXAMPLE_ESP_WIFI_SSID      "mrow"
+// #define EXAMPLE_ESP_WIFI_PASS      "00000000"
 #define EXAMPLE_ESP_MAXIMUM_RETRY  3
 
 static EventGroupHandle_t s_wifi_event_group;

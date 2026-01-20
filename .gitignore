@@ -2,3 +2,5 @@ build/
 .clangd
 .vscode
 managed_components
+.cache
+output.bin*

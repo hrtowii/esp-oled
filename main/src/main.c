@@ -17,29 +17,31 @@ static const char *TAG = "MAIN";
 void display_task(void *arg) {
     app_state_t local_state;
     char time_buf[32];
+    static MarqueeState_t song_marquee = {0, 0, ""};
+    static MarqueeState_t artist_marquee = {0, 0, ""};
     
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(16); // 16ms = ~60 FPS
 
     while (1) {
-        // A. Copy Data Safely
         if (xStateMutex && xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
             memcpy(&local_state, &g_app_state, sizeof(app_state_t));
             xSemaphoreGive(xStateMutex);
         }
 
-        // B. Clear Screen
         ssd1306_Fill(Black);
 
-        // C. Render Logic
         if (local_state.is_playing) {
             ssd1306_SetCursor(0, 0); 
-            ssd1306_WriteString(local_state.song, Font_7x10, White);
+            ssd1306_WriteStringMarquee(local_state.song, Font_7x10, White,
+                                        128, &song_marquee, 
+                                        MARQUEE_SPEED, MARQUEE_START_DELAY, MARQUEE_LOOP_GAP);
             
             ssd1306_SetCursor(0, 16); 
-            ssd1306_WriteString(local_state.artist, Font_7x10, White);
+            ssd1306_WriteStringMarquee(local_state.artist, Font_7x10, White,
+                                        128, &artist_marquee,
+                                        MARQUEE_SPEED, MARQUEE_START_DELAY, MARQUEE_LOOP_GAP);
 
-            // Progress Calculation
             if (local_state.start_time_ms > 0 && local_state.end_time_ms > 0) {
                 int64_t now = get_current_time_ms();
                 int64_t duration = local_state.end_time_ms - local_state.start_time_ms;
@@ -48,18 +50,15 @@ void display_task(void *arg) {
                 if (progress < 0) progress = 0;
                 if (progress > duration) progress = duration;
 
-                // Percentage 0-100
                 int percent = (duration > 0) ? (int)((progress * 100) / duration) : 0;
                 
-                // String "01:30"
                 int p_sec = progress / 1000;
                 snprintf(time_buf, 32, "%02d:%02d", p_sec / 60, p_sec % 60);
                 
                 ssd1306_SetCursor(0, 32);
                 ssd1306_WriteString(time_buf, Font_7x10, White);
 
-                // Progress Bar
-                // Outline
+
                 for (int x = 0; x < 128; x++) {
                     ssd1306_DrawPixel(x, 48, White);
                     ssd1306_DrawPixel(x, 54, White);
@@ -68,10 +67,9 @@ void display_task(void *arg) {
                     ssd1306_DrawPixel(0, y, White);
                     ssd1306_DrawPixel(127, y, White);
                 }
-                // Fill
                 int w = (128 * percent) / 100;
                 for (int x = 0; x < w; x++) {
-                     for (int y = 49; y < 54; y++) { // Solid fill, avoiding boundary
+                     for (int y = 49; y < 54; y++) {
                          ssd1306_DrawPixel(x, y, White);
                      }
                 }
@@ -81,10 +79,8 @@ void display_task(void *arg) {
              ssd1306_WriteString("No Music Playing", Font_7x10, White);
         }
 
-        // D. Push to hardware
         ssd1306_UpdateScreen();
 
-        // E. Precise Delay
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -108,16 +104,16 @@ void app_main(void) {
     while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_ERR_TIMEOUT) {
         ESP_LOGI(TAG, "Waiting for SNTP to sync...");
     }
-    ESP_LOGI(TAG, "time synced");
-    time_t rawtime;
-    struct tm * timeinfo;
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    char output[100];
-    sprintf(output, "[%d/%d/%d %d:%d:%d]", timeinfo->tm_mday,
-            timeinfo->tm_mon + 1, timeinfo->tm_year + 1900,
-            timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-    ESP_LOGI(TAG, "%s", output);
+    // ESP_LOGI(TAG, "time synced");
+    // time_t rawtime;
+    // struct tm * timeinfo;
+    // time(&rawtime);
+    // timeinfo = localtime(&rawtime);
+    // char output[100];
+    // sprintf(output, "[%d/%d/%d %d:%d:%d]", timeinfo->tm_mday,
+    //         timeinfo->tm_mon + 1, timeinfo->tm_year + 1900,
+    //         timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+    // ESP_LOGI(TAG, "%s", output);
 
     start_fetcher_task();
     int task_id0 = 0;

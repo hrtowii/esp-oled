@@ -14,7 +14,7 @@
 #include "fetcher.h"
 #include "esp_crt_bundle.h"
 
-#define TAG "FETCHER: "
+#define TAG "FETCHER"
 #define LANYARD_ID     "413331641109446656" 
 #define LANYARD_URI    "wss://api.lanyard.rest/socket"
 
@@ -44,7 +44,7 @@ void heartbeat_task(void *pvParameters) {
     TickType_t xDelay = pdMS_TO_TICKS(interval_ms);
 
     while (1) {
-        ESP_LOGD(TAG, "Ping...");
+        ESP_LOGD(TAG, "heartbeatping");
         cJSON *root = cJSON_CreateObject();
         cJSON_AddNumberToObject(root, "op", 3);
         ws_send_json(root);
@@ -82,7 +82,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                         xTaskCreate(heartbeat_task, "ws_hb", 2048, (void *)interval, 5, &heartbeat_task_handle);
                     }
 
-                    ESP_LOGI(TAG, "subscribe id: %s", LANYARD_ID);
+                    // ESP_LOGI(TAG, "subscribe id: %s", LANYARD_ID);
                     cJSON *sub = cJSON_CreateObject();
                     cJSON_AddNumberToObject(sub, "op", 2);
                     cJSON *d = cJSON_CreateObject();
@@ -125,7 +125,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                             strncpy(g_app_state.artist, art, 63);
                             strncpy(g_app_state.song, sng, 63);
                             g_app_state.is_playing = true;
-                            ESP_LOGI(TAG, "playing: %s", sng);
+                            ESP_LOGI(TAG, "playing %s", sng);
                         } else {
                             g_app_state.is_playing = false;
                         }

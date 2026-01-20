@@ -347,3 +347,94 @@ void oled_update_name(char *string) {
     ssd1306_UpdateScreen();
 }
 
+static uint16_t ssd1306_GetStringWidth(const char* str, FontDef Font) {
+    return strlen(str) * Font.FontWidth;
+}
+
+static void ssd1306_WriteCharAt(int16_t x, uint8_t y, char ch, FontDef Font, SSD1306_COLOR color) {
+    uint32_t i, b, j;
+    // entirely outside? skip
+    if (x >= SSD1306_WIDTH || x + (int16_t)Font.FontWidth <= 0) {
+        return;
+    }
+    if (ch < 32 || ch > 126) {
+        ch = '?';
+    }
+    // write the font partially if outside, for scrolling
+    for (i = 0; i < Font.FontHeight; i++) {
+        b = Font.data[(ch - 32) * Font.FontHeight + i];
+        for (j = 0; j < Font.FontWidth; j++) {
+            int16_t px = x + j;
+            if (px >= 0 && px < SSD1306_WIDTH) {
+                if ((b << j) & 0x8000) {
+                    ssd1306_DrawPixel(px, y + i, color);
+                } else {
+                    ssd1306_DrawPixel(px, y + i, (SSD1306_COLOR)!color); // black
+                }
+            }
+        }
+    }
+}
+
+static void ssd1306_WriteStringAt(int16_t x, uint8_t y, const char* str, FontDef Font, SSD1306_COLOR color) {
+    while (*str) {
+        if (x >= SSD1306_WIDTH) {
+            break;
+        }
+        if (x + (int16_t)Font.FontWidth > 0) {
+            ssd1306_WriteCharAt(x, y, *str, Font, color);
+        }
+        x += Font.FontWidth;
+        str++;
+    }
+}
+
+
+void ssd1306_WriteStringMarquee(const char* str, FontDef Font, SSD1306_COLOR color,
+                                 uint8_t max_width, MarqueeState_t *state,
+                                 uint8_t scroll_speed, uint16_t start_delay, uint8_t loop_gap) {
+    if (str == NULL || state == NULL) {
+        return;
+    }
+    
+    uint16_t text_width = ssd1306_GetStringWidth(str, Font);
+    uint8_t base_x = SSD1306.CurrentX;
+    uint8_t base_y = SSD1306.CurrentY;
+    
+    if (strncmp(state->last_text, str, sizeof(state->last_text) - 1) != 0) {
+        state->scroll_offset = 0;
+        state->delay_counter = 0;
+        strncpy(state->last_text, str, sizeof(state->last_text) - 1);
+        state->last_text[sizeof(state->last_text) - 1] = '\0';
+    }
+    
+    if (text_width <= max_width) {
+        ssd1306_WriteString(str, Font, color);
+        return;
+    }
+    
+    if (state->delay_counter < start_delay) {
+        state->delay_counter++;
+        ssd1306_WriteStringAt(base_x, base_y, str, Font, color);
+        return;
+    }
+    
+    uint16_t total_cycle_width = text_width + loop_gap;
+    
+    state->scroll_offset += scroll_speed;
+    
+    if (state->scroll_offset >= total_cycle_width) {
+        state->scroll_offset = 0;
+        // make delay again
+        state->delay_counter = 0;
+    }
+    
+    int16_t primary_x = base_x - (int16_t)state->scroll_offset;
+    ssd1306_WriteStringAt(primary_x, base_y, str, Font, color);
+    
+    int16_t wrapped_x = primary_x + total_cycle_width;
+    if (wrapped_x < max_width) {
+        ssd1306_WriteStringAt(wrapped_x, base_y, str, Font, color);
+    }
+}
+

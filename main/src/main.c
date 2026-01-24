@@ -122,5 +122,5 @@ void app_main(void) {
     int task_id0 = 0;
     xTaskCreate(display_task, "display_task", 4096, (void*)task_id0, 2, NULL);
     int task_id1 = 0;
-    xTaskCreate(image_task, "image_task", 4096, (void*)task_id1, 2, NULL);
+    xTaskCreate(image_task, "image_task", 16384, (void*)task_id1, 2, NULL);
 }

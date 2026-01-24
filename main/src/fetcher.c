@@ -17,6 +17,7 @@
 #define TAG "FETCHER"
 #define LANYARD_ID     "413331641109446656" 
 #define LANYARD_URI    "wss://api.lanyard.rest/socket"
+char album_art_url[128];
 
 esp_websocket_client_handle_t client = NULL;
 TaskHandle_t heartbeat_task_handle = NULL;
@@ -103,6 +104,9 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                             cJSON *artist_item = cJSON_GetObjectItem(spotify, "artist");
                             cJSON *song_item = cJSON_GetObjectItem(spotify, "song");
                             cJSON *album_item = cJSON_GetObjectItem(spotify, "album_art_url");
+                            char album_art_url[128];
+strncpy(album_art_url, cJSON_GetStringValue(album_item) ?: "", sizeof(album_art_url) - 1);
+album_art_url[127] = '\0';
                             if (!cJSON_IsString(artist_item) || !cJSON_IsString(song_item) || !cJSON_IsString(album_item)) {
                                 ESP_LOGE(TAG, "either artist or song or art url doesn't exist, skip!");
                                 xSemaphoreGive(xStateMutex);
@@ -111,7 +115,6 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                             char *art = cJSON_GetStringValue(artist_item);
                             char *sng = cJSON_GetStringValue(song_item);
                             char *album_art = cJSON_GetStringValue(album_item);
-                            ESP_LOGI(TAG, "album_art: %s", album_art);
                             cJSON *ts = cJSON_GetObjectItem(spotify, "timestamps");
                             if (ts) {
                                 cJSON *start_item = cJSON_GetObjectItem(ts, "start");
@@ -131,7 +134,7 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                             // strncpy(g_app_state.album_art, album_art, 63); im not even using this struct in g app state lol its all in a queue
                             xQueueSend(
                                 g_image_queue,
-                                album_art,
+                                album_art_url,
                                 portMAX_DELAY
                             );
                             g_app_state.is_playing = true;

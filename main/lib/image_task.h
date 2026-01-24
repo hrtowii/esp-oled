@@ -1,0 +1,1 @@
+void image_task(void* arg);

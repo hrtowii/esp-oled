@@ -12,11 +12,12 @@ typedef struct {
     bool is_playing;
     int64_t start_time_ms;
     int64_t end_time_ms;
+    // char album_art[64];
 } app_state_t;
 
 extern app_state_t g_app_state;
 extern SemaphoreHandle_t xStateMutex;
-
+extern QueueHandle_t g_image_queue;
 int64_t get_current_time_ms(void);
 void start_fetcher_task(void);
 

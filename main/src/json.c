@@ -2,19 +2,14 @@
 #include "esp_tls.h" 
 #include "cJSON.h"
 #include "esp_log.h"
-static const char *TAG = "JSON: ";
-// https://github.com/nopnop2002/esp-idf-json/blob/master/json-http-client1/main/main.c
+#include "esp_crt_bundle.h"
+
+static const char *TAG = "HTTP_CLIENT";
 
 esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 {
 	static int output_len; // Stores number of bytes read
 	switch(evt->event_id) {
-        case HTTP_EVENT_ON_HEADERS_COMPLETE:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADERS_COMPLETE");
-            break;
-        case HTTP_EVENT_ON_STATUS_CODE:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_STATUS_CODE");
-            break;
 		case HTTP_EVENT_ERROR:
 			ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
 			break;
@@ -41,6 +36,12 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 			ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
 			output_len = 0;
 			break;
+        case HTTP_EVENT_ON_STATUS_CODE:
+        output_len = 0;
+            break;
+        case HTTP_EVENT_ON_HEADERS_COMPLETE:
+        output_len = 0;
+            break;
 		case HTTP_EVENT_DISCONNECTED:
 			ESP_LOGD(TAG, "HTTP_EVENT_DISCONNECTED");
 			int mbedtls_err = 0;
@@ -56,157 +57,100 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 			ESP_LOGD(TAG, "HTTP_EVENT_REDIRECT");
 			break;
 #endif
-	} 
+	}
 	return ESP_OK;
 }
-
-char *JSON_Types(int type) {
-	if (type == cJSON_Invalid) return ("cJSON_Invalid");
-	if (type == cJSON_False) return ("cJSON_False");
-	if (type == cJSON_True) return ("cJSON_True");
-	if (type == cJSON_NULL) return ("cJSON_NULL");
-	if (type == cJSON_Number) return ("cJSON_Number");
-	if (type == cJSON_String) return ("cJSON_String");
-	if (type == cJSON_Array) return ("cJSON_Array");
-	if (type == cJSON_Object) return ("cJSON_Object");
-	if (type == cJSON_Raw) return ("cJSON_Raw");
-	return NULL;
-}
-
-void JSON_Parse(const cJSON * const root) {
-	//ESP_LOGI(TAG, "root->type=%s", JSON_Types(root->type));
-	cJSON *current_element = NULL;
-	//ESP_LOGI(TAG, "roo->child=%p", root->child);
-	//ESP_LOGI(TAG, "roo->next =%p", root->next);
-	cJSON_ArrayForEach(current_element, root) {
-		//ESP_LOGI(TAG, "type=%s", JSON_Types(current_element->type));
-		//ESP_LOGI(TAG, "current_element->string=%p", current_element->string);
-		if (current_element->string) {
-			const char* string = current_element->string;
-			ESP_LOGI(TAG, "[%s]", string);
-		}
-		if (cJSON_IsInvalid(current_element)) {
-			ESP_LOGI(TAG, "Invalid");
-		} else if (cJSON_IsFalse(current_element)) {
-			ESP_LOGI(TAG, "False");
-		} else if (cJSON_IsTrue(current_element)) {
-			ESP_LOGI(TAG, "True");
-		} else if (cJSON_IsNull(current_element)) {
-			ESP_LOGI(TAG, "Null");
-		} else if (cJSON_IsNumber(current_element)) {
-			int valueint = current_element->valueint;
-			double valuedouble = current_element->valuedouble;
-			ESP_LOGI(TAG, "int=%d double=%f", valueint, valuedouble);
-		} else if (cJSON_IsString(current_element)) {
-			const char* valuestring = current_element->valuestring;
-			ESP_LOGI(TAG, "%s", valuestring);
-		} else if (cJSON_IsArray(current_element)) {
-			//ESP_LOGI(TAG, "Array");
-			JSON_Parse(current_element);
-		} else if (cJSON_IsObject(current_element)) {
-			//ESP_LOGI(TAG, "Object");
-			JSON_Parse(current_element);
-		} else if (cJSON_IsRaw(current_element)) {
-			ESP_LOGI(TAG, "Raw(Not support)");
-		}
-	}
-}
-
-int http_client_content_length(char * url, char * cert_pem)
+int http_client_content_length(const char *url)
 {
-	ESP_LOGI(TAG, "http_client_content_length url=%s",url);
-	int content_length;
-	
-	esp_http_client_config_t config = {
-		.url = url,
-		.event_handler = _http_event_handler,
-		.user_data = NULL,
-		//.user_data = local_response_buffer,
-		.cert_pem = cert_pem,
-	};
-	esp_http_client_handle_t client = esp_http_client_init(&config);
+    ESP_LOGI(TAG, "Checking length for: %s", url);
+    int content_length = 0;
+    
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = _http_event_handler,
+        .user_data = NULL,
+        .crt_bundle_attach = esp_crt_bundle_attach, // <--- MAGIC LINE: Auto-handles SSL certs
+        .timeout_ms = 5000,
+    };
+    
+    esp_http_client_handle_t client = esp_http_client_init(&config);
 
-	// GET
-	esp_err_t err = esp_http_client_perform(client);
-	if (err == ESP_OK) {
-		ESP_LOGD(TAG, "HTTP GET Status = %d, content_length = %"PRId64,
-			esp_http_client_get_status_code(client),
-			esp_http_client_get_content_length(client));
-		content_length = esp_http_client_get_content_length(client);
-
-	} else {
-		ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-		content_length = 0;
-	}
-	esp_http_client_cleanup(client);
-	return content_length;
+    // We only need the headers to get the length
+    esp_err_t err = esp_http_client_perform(client);
+    
+    if (err == ESP_OK) {
+        content_length = esp_http_client_get_content_length(client);
+        ESP_LOGD(TAG, "Status = %d, Content_Length = %d", 
+                 esp_http_client_get_status_code(client), content_length);
+    } else {
+        ESP_LOGE(TAG, "Length check failed: %s", esp_err_to_name(err));
+    }
+    
+    esp_http_client_cleanup(client);
+    return content_length;
 }
 
-esp_err_t http_client_content_get(char * url, char * cert_pem, char * response_buffer)
+esp_err_t http_client_content_get(const char *url, char *response_buffer)
 {
-	ESP_LOGI(TAG, "http_client_content_get url=%s",url);
+    ESP_LOGI(TAG, "Downloading: %s", url);
 
-	esp_http_client_config_t config = {
-		.url = url,
-		.event_handler = _http_event_handler,
-		.user_data = response_buffer,
-		.cert_pem = cert_pem,
-	};
-	esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = _http_event_handler,
+        .user_data = response_buffer,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .timeout_ms = 10000,
+        .buffer_size = 2048,
+    };
+    
+    esp_http_client_handle_t client = esp_http_client_init(&config);
 
-	// GET
-	esp_err_t err = esp_http_client_perform(client);
-	if (err == ESP_OK) {
-		ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %"PRId64,
-			esp_http_client_get_status_code(client),
-			esp_http_client_get_content_length(client));
-		ESP_LOGD(TAG, "\n%s", response_buffer);
-	} else {
-		ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-	}
-	esp_http_client_cleanup(client);
-	return err;
+    esp_err_t err = esp_http_client_perform(client);
+    
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Download Status = %d, len = %lld", 
+                 esp_http_client_get_status_code(client), 
+                 esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG, "Download failed: %s", esp_err_to_name(err));
+    }
+    
+    esp_http_client_cleanup(client);
+    return err;
 }
 
-void http_client_get(char * url, char * cert_pem)
+// Returns pointer to malloc'd buffer, or NULL on failure.
+// Caller is responsible for free().
+char* http_client_get_image(const char *url)
 {
-	int content_length;
-	for (int retry=0;retry<10;retry++) {
-		content_length = http_client_content_length(url, cert_pem);
-		ESP_LOGI(pcTaskGetName(0), "content_length=%d", content_length);
-		if (content_length > 0) break;
-		vTaskDelay(100);
-	}
+    int content_length = 0;
+    
+    for (int retry = 0; retry < 3; retry++) {
+        content_length = http_client_content_length(url);
+        if (content_length > 0) break;
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
 
-	if (content_length <= 0) {
-		ESP_LOGE(pcTaskGetName(0), "[%s] server does not respond", url);
-		while(1) {
-			vTaskDelay(100);
-		}
-	}
+    if (content_length <= 0) {
+        ESP_LOGE(TAG, "Failed to get content length or empty file");
+        return NULL;
+    }
 
-	char *response_buffer; // Buffer to store response of http request from event handler
-	response_buffer = (char *) malloc(content_length+1);
-	if (response_buffer == NULL) {
-		ESP_LOGE(pcTaskGetName(0), "Failed to allocate memory for output buffer");
-		while(1) {
-			vTaskDelay(1);
-		}
-	}
-	bzero(response_buffer, content_length+1);
+    // Allocate memory (+1 for safety null terminator, though not strictly needed for binary images)
+    char *response_buffer = (char *) malloc(content_length + 1);
+    if (response_buffer == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate %d bytes", content_length);
+        return NULL;
+    }
+    
+    // memset(response_buffer, 0, content_length + 1); 
 
-	// Get content
-	while(1) {
-		esp_err_t err = http_client_content_get(url, cert_pem, response_buffer);
-		if (err == ESP_OK) break;
-		vTaskDelay(100);
-	}
-	ESP_LOGI(TAG, "content_length=%d", content_length);
-	ESP_LOGI(TAG, "\n[%s]", response_buffer);
+    esp_err_t err = http_client_content_get(url, response_buffer);
+    
+    if (err != ESP_OK) {
+        free(response_buffer);
+        return NULL;
+    }
 
-	ESP_LOGI(TAG, "Deserialize.....");
-	cJSON *root = cJSON_Parse(response_buffer);
-	JSON_Parse(root);
-	cJSON_Delete(root);
-	free(response_buffer);
+    return response_buffer;
 }

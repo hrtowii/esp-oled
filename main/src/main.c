@@ -10,6 +10,8 @@
 #include "fonts.h" 
 #include "wifi.h"
 #include "fetcher.h"
+#include "spi_ssd1306.h"
+#include "image_task.h"
 // https://github.com/NUSGreyhats/greycat2k24-badge-public/blob/main/firmware/greycat_firmware/Src/hw/oled.c#L4
 static const char *TAG = "MAIN";
 
@@ -94,7 +96,8 @@ void app_main(void) {
     // nvs needed fr wifi
     ESP_ERROR_CHECK(ret);
     oled_init();
-
+    spi_oled_init();
+    spi_oled_clear();
     ESP_LOGI(TAG, "initing wifi");
     ESP_ERROR_CHECK(wifi_init_sta());
 
@@ -118,4 +121,6 @@ void app_main(void) {
     start_fetcher_task();
     int task_id0 = 0;
     xTaskCreate(display_task, "display_task", 4096, (void*)task_id0, 2, NULL);
+    int task_id1 = 0;
+    xTaskCreate(image_task, "image_task", 4096, (void*)task_id1, 2, NULL);
 }

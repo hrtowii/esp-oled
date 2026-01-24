@@ -21,6 +21,7 @@
 esp_websocket_client_handle_t client = NULL;
 TaskHandle_t heartbeat_task_handle = NULL;
 app_state_t g_app_state;
+QueueHandle_t g_image_queue;
 SemaphoreHandle_t xStateMutex = NULL;
 
 int64_t get_current_time_ms() {
@@ -101,13 +102,16 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
                         if (cJSON_IsObject(spotify)) {
                             cJSON *artist_item = cJSON_GetObjectItem(spotify, "artist");
                             cJSON *song_item = cJSON_GetObjectItem(spotify, "song");
-                            if (!cJSON_IsString(artist_item) || !cJSON_IsString(song_item)) {
+                            cJSON *album_item = cJSON_GetObjectItem(spotify, "album_art_url");
+                            if (!cJSON_IsString(artist_item) || !cJSON_IsString(song_item) || !cJSON_IsString(album_item)) {
+                                ESP_LOGE(TAG, "either artist or song or art url doesn't exist, skip!");
                                 xSemaphoreGive(xStateMutex);
                                 return;
                             }
                             char *art = cJSON_GetStringValue(artist_item);
                             char *sng = cJSON_GetStringValue(song_item);
-                            
+                            char *album_art = cJSON_GetStringValue(album_item);
+                            ESP_LOGI(TAG, "album_art: %s", album_art);
                             cJSON *ts = cJSON_GetObjectItem(spotify, "timestamps");
                             if (ts) {
                                 cJSON *start_item = cJSON_GetObjectItem(ts, "start");
@@ -124,6 +128,12 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 
                             strncpy(g_app_state.artist, art, 63);
                             strncpy(g_app_state.song, sng, 63);
+                            // strncpy(g_app_state.album_art, album_art, 63); im not even using this struct in g app state lol its all in a queue
+                            xQueueSend(
+                                g_image_queue,
+                                album_art,
+                                portMAX_DELAY
+                            );
                             g_app_state.is_playing = true;
                             ESP_LOGI(TAG, "playing %s", sng);
                         } else {
@@ -165,6 +175,12 @@ const char cert[] =
 void websocket_app_start() {
     if (xStateMutex == NULL) {
         xStateMutex = xSemaphoreCreateMutex();
+    }
+    if (g_image_queue == NULL) {
+        g_image_queue = xQueueCreate(
+            1, // ?? i dunno bruh i can just pop out of it as soon as i get it right
+            64
+        );
     }
     esp_websocket_client_config_t config = {
         .uri = LANYARD_URI,
